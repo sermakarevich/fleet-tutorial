@@ -9,8 +9,8 @@ from swarm import checkpoint, human
 PROMPT_FILE = Path(__file__).parent / "prompts" / "do_task.txt"
 RESUME_PROMPT_FILE = Path(__file__).parent / "prompts" / "resume_task.txt"
 ANSWER_PROMPT_FILE = Path(__file__).parent / "prompts" / "answer_task.txt"
-HARNESS_BIN = "claude"
-HEADLESS_FLAG = "-p"
+HARNESS_BIN = "opencode"
+HARNESS_ARGS = ("run",)
 
 
 def build_prompt(task: str) -> str:
@@ -31,7 +31,7 @@ def build_answer_prompt(task: str, question: str, answer: str) -> str:
 def run_harness(prompt: str) -> str:
     """Call the harness command line interface and return its output."""
     done = subprocess.run(
-        [HARNESS_BIN, HEADLESS_FLAG, prompt],
+        [HARNESS_BIN, *HARNESS_ARGS, prompt],
         capture_output=True,
         text=True,
         check=True,

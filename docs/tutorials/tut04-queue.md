@@ -47,6 +47,7 @@ same line.
 src/swarm/
 +   queue.py              beads claims through the bd tool, one caller wins
 ~   loop.py               claims beads instead of reading the TODO file
+~   worker.py             defaults to the opencode harness
 ~   __main__.py           demo where two beads are claimed with no double-run
 tests/
 +   test_queue.py
