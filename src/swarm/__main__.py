@@ -2,10 +2,12 @@
 
 import os
 import tempfile
+import threading
+import time
 from collections import Counter
 from pathlib import Path
 
-from swarm import loop, queue
+from swarm import queue, runner
 
 FAKE_BD = """#!/bin/sh
 dir="$FAKE_BEADS_DIR"
@@ -39,9 +41,10 @@ esac
 
 
 def seed_demo_beads(state_dir: Path) -> None:
-    """Two open beads the fake `bd` can list, claim, and close."""
+    """Three open beads the fake `bd` can list, claim, and close."""
     (state_dir / "open_bead-1").write_text("first chore\n")
     (state_dir / "open_bead-2").write_text("second chore\n")
+    (state_dir / "open_bead-3").write_text("third chore\n")
 
 
 def install_fake_bd(tmp: Path) -> Path:
@@ -63,18 +66,37 @@ def main() -> None:
         state_dir = install_fake_bd(Path(tmp))
         seed_demo_beads(state_dir)
         runs: Counter[str] = Counter()
+        lock = threading.Lock()
+        live = 0
+        peak = 0
 
         def canned(task: str) -> str:
-            runs[task] += 1
-            return f"result for {task}"
+            nonlocal live, peak
+            with lock:
+                runs[task] += 1
+                attempt = runs[task]
+                live += 1
+                peak = max(peak, live)
+            try:
+                time.sleep(0.2)
+                if task == "second chore" and attempt == 1:
+                    print(f"crashed: {task} died holding its lease")
+                    raise RuntimeError("simulated crash")
+                return f"result for {task}"
+            finally:
+                with lock:
+                    live -= 1
 
-        results = loop.run(canned)
-        for result in results:
+        results = runner.run_parallel(count=3, run_task=canned, lease_ttl=0.2, beat_every=0.05)
+        for result in sorted(results):
             print(f"result: {result}")
-        doubles = sum(count - 1 for count in runs.values())
+        print(f"workers at peak: {peak}")
+        if runs["second chore"] > 1:
+            print("dead lease reclaimed: second chore ran again and closed")
+        doubles = sum(count - 1 for task, count in runs.items() if task != "second chore")
         print(f"done: claimed {len(results)}, ran {sum(runs.values())}, double-runs {doubles}")
         assert queue.claim_next() is None
-        print("queue empty: both beads closed")
+        print("queue empty: all beads closed")
 
 
 if __name__ == "__main__":

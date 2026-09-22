@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: tasks claimed from beads, never twice
+# Shows what this tutorial built: parallel workers, dead leases reclaimed
 tutorial:
-    @echo "tut04: beads queue"
+    @echo "tut05: parallel workers and leases"
     uv run python -m swarm
 
 fmt:
