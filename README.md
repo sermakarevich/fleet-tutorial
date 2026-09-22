@@ -61,7 +61,7 @@ offline.
 | 8 — Model routing plus multi-harness | `tut08` | [tut08-routing.md](docs/tutorials/tut08-routing.md) |
 | 9 — The runner becomes an orchestrator | `tut09` | [tut09-supervisor.md](docs/tutorials/tut09-supervisor.md) |
 | 10 — Workflows as saved graphs | `tut10` | [tut10-workflows.md](docs/tutorials/tut10-workflows.md) |
-| 11 — Schedules on cron | `tut11` | planned |
+| 11 — Schedules on cron | `tut11` | [tut11-schedule.md](docs/tutorials/tut11-schedule.md) |
 | 12 — Triggers on events plus capstone | `tut12` | planned |
 
 A row says `planned` until its tag is published. The concept behind each row
