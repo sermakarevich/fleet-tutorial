@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: one workflow file runs spec, code, check in order
+# Shows what this tutorial built: one due schedule fires, one stays quiet
 tutorial:
-    @echo "tut10: one workflow runs spec, code, check in order"
+    @echo "tut11: one due schedule fires, one stays quiet"
     uv run python -m swarm
 
 fmt:

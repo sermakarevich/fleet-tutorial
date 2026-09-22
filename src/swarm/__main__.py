@@ -1,11 +1,11 @@
-"""Entry point of the swarm runner: run one saved workflow through beads."""
+"""Entry point of the swarm runner: fire due schedules on cron."""
 
 import os
-import subprocess
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
-from swarm import queue, retry, runner, workflows, worktree
+from swarm import queue, schedule
 
 FAKE_BD = """#!/bin/sh
 dir="$FAKE_BEADS_DIR"
@@ -88,8 +88,6 @@ case "$1" in
 esac
 """
 
-WORKFLOW = "write spec\nwrite code: write spec\ncheck work: write code\n"
-
 
 def install_fake_bd(tmp: Path) -> Path:
     bin_dir = tmp / "bin"
@@ -104,58 +102,27 @@ def install_fake_bd(tmp: Path) -> Path:
     return state_dir
 
 
-def seed_repo(repo: Path) -> None:
-    repo.mkdir()
-    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
-    (repo / "progress.txt").write_text("")
-    subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
-    subprocess.run(
-        [
-            "git",
-            "-c",
-            "user.name=swarm",
-            "-c",
-            "user.email=swarm@example.com",
-            "commit",
-            "-m",
-            "seed",
-        ],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-    )
-
-
-def demo_task(task: str, workdir: Path, meta=None) -> str:
-    log = workdir / "progress.txt"
-    log.write_text(log.read_text() + task + "\n")
-    worktree.commit(workdir, task)
-    return f"result for {task}"
-
-
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         install_fake_bd(Path(tmp))
-        flow = Path(tmp) / "flow.txt"
-        flow.write_text(WORKFLOW)
-        ids = workflows.start(flow)
-        print(f"opened: {len(ids)} steps (spec, code, check)")
-        repo = Path(tmp) / "repo"
-        seed_repo(repo)
-        failures: dict[str, list[retry.Kind]] = {}
-        for _ in range(10):
-            ready = queue.list_ready()
-            if not ready:
-                break
-            print(f"ready: {ready[0].title}")
-            result = runner.supervise(demo_task, repo=repo, failures=failures)
-            if result is not None:
-                print(f"closed: {result}")
-        status = workflows.run_status({name: queue.state(bead) for name, bead in ids.items()})
-        done = (repo / "progress.txt").read_text().splitlines()
-        assert done == ["write spec", "write code", "check work"]
-        assert status == workflows.DONE
-        print(f"run status: {status} (3 of 3 steps closed in order)")
+        now = datetime.now()
+        other = (now.minute + 1) % 60
+        sched = Path(tmp) / "sched.txt"
+        sched.write_text(
+            "morning report | * * * * * | task: write daily report\n"
+            f"later job | {other} * * * * | task: write later report\n"
+        )
+        entries = schedule.load(sched)
+        fired: dict[str, str] = {}
+        for entry in schedule.tick(entries, now, fired):
+            bead = schedule.fire(entry, now, fired)
+            print(f"fired: {entry.name} -> {bead}")
+        for entry in entries:
+            if entry.name not in fired:
+                print(f"quiet: {entry.name} (not due)")
+        ready = [task.title for task in queue.list_ready()]
+        assert ready == ["write daily report"]
+        assert schedule.tick(entries, now, fired) == []
 
 
 if __name__ == "__main__":
