@@ -22,22 +22,23 @@ another.
 
 ### Scope
 
-1. Keep tasks in a plain text TODO (to-do) file, one task per line.
-2. Run each task through one headless worker session using the harness command line
-   interface (CLI).
-3. Loop until the list is empty and print each result with a final count.
+1. Keep tasks in a plain text TODO file, not typed into the interactive terminal (section 1).
+2. Run each task in one headless harness CLI session; loop sends "next item, please" (section 2).
+3. Loop until the list is empty and print each result with a final count (section 2).
 
 Left out on purpose: surviving a crash mid-task. Tutorial 2 adds checkpoint and resume.
 
 ### The problem
 
 ```text
-$ just tutorial
-setup OK
+$ harness
+> summarise the inbox
+... wait for the answer ...
+> draft the status update
+... wait again ...
 ```
 
-The setup check passes but knows no task. Anything you need doing still waits for you
-to type it by hand, one prompt at a time.
+You type one task, wait, get distracted, come back, type the next, and the idle gaps waste time.
 
 ### What changes
 
