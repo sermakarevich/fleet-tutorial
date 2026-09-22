@@ -56,3 +56,25 @@ def test_reopen_returns_a_failed_bead_to_ready(beads: Path) -> None:
     assert task.bead_id in [ready.bead_id for ready in queue.list_ready()]
     again = queue.claim_next()
     assert again is not None and again.bead_id == task.bead_id
+
+
+def test_create_blocks_on_deps_until_parents_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_beads.install(tmp_path, monkeypatch, {})
+    first = queue.create("write spec")
+    second = queue.create("write code", (first,))
+
+    assert [task.bead_id for task in queue.list_ready()] == [first]
+    task = queue.claim_next()
+    assert task is not None
+    queue.close(task)
+    assert [task.bead_id for task in queue.list_ready()] == [second]
+
+
+def test_state_reports_each_bead_status(beads: Path) -> None:
+    task = queue.claim_next()
+    assert task is not None
+    assert queue.state(task.bead_id) == "in_progress"
+    queue.close(task)
+    assert queue.state(task.bead_id) == "closed"

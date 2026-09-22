@@ -31,6 +31,25 @@ def list_ready() -> list[Task]:
     ]
 
 
+def create(title: str, deps: tuple[str, ...] = ()) -> str:
+    """Open one bead, blocked on `deps` until those beads close. Return its id."""
+    args = ["create", title]
+    if deps:
+        args += ["--deps", ",".join(deps)]
+    args += ["--silent"]
+    done = _run_bd(args)
+    return done.stdout.strip()
+
+
+def state(bead_id: str) -> str:
+    """Current status word of one bead: open, in_progress, closed, or blocked."""
+    done = _run_bd(["show", bead_id, "--json"])
+    rows = json.loads(done.stdout or "[]")
+    if rows and isinstance(rows[0], dict):
+        return str(rows[0].get("status") or "open")
+    return "open"
+
+
 def claim_next() -> Task | None:
     """Claim one ready bead, or None when the queue is empty.
 

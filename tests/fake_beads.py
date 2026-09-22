@@ -7,17 +7,65 @@ import pytest
 
 SCRIPT = """#!/bin/sh
 dir="$FAKE_BEADS_DIR"
+ready_one() {
+  f="$1"
+  id="${f##*/open_}"
+  deps=""
+  [ -f "$dir/deps_$id" ] && deps="$(cat "$dir/deps_$id")"
+  saved="$IFS"
+  IFS=','
+  # shellcheck disable=SC2162
+  for dep in $deps; do
+    dep="$(printf '%s' "$dep" | tr -d ' ')"
+    [ -z "$dep" ] && continue
+    [ -f "$dir/closed_$dep" ] || { IFS="$saved"; return 1; }
+  done
+  IFS="$saved"
+  return 0
+}
 case "$1" in
   ready)
     printf '['
     first=1
     for f in "$dir"/open_*; do
       [ -e "$f" ] || continue
+      ready_one "$f" || continue
       if [ $first -eq 0 ]; then printf ','; fi
       first=0
       printf '{"id":"%s","title":"%s"}' "${f##*/open_}" "$(cat "$f")"
     done
     printf ']\\n'
+    ;;
+  create)
+    title="$2"
+    deps=""
+    shift 2
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --deps) deps="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    n=1
+    while [ -e "$dir/open_bead-$n" ] || [ -e "$dir/prog_bead-$n" ] \\
+        || [ -e "$dir/closed_bead-$n" ] || [ -e "$dir/blocked_bead-$n" ]; do
+      n=$((n + 1))
+    done
+    printf '%s\\n' "$title" > "$dir/open_bead-$n"
+    printf '%s\\n' "$deps" > "$dir/deps_bead-$n"
+    printf 'bead-%s\\n' "$n"
+    ;;
+  show)
+    id="$2"
+    status="open"
+    [ -e "$dir/prog_$id" ] && status="in_progress"
+    [ -e "$dir/blocked_$id" ] && status="blocked"
+    [ -e "$dir/closed_$id" ] && status="closed"
+    title=""
+    for f in "$dir"/open_"$id" "$dir"/prog_"$id" "$dir"/blocked_"$id"; do
+      [ -f "$f" ] && title="$(cat "$f")"
+    done
+    printf '[{"id":"%s","title":"%s","status":"%s"}]\\n' "$id" "$title" "$status"
     ;;
   update)
     if [ "$3" = "--claim" ]; then

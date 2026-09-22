@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: one supervisor tick claims, spawns, reaps, merges
+# Shows what this tutorial built: one workflow file runs spec, code, check in order
 tutorial:
-    @echo "tut09: supervisor claims, spawns, reaps"
+    @echo "tut10: one workflow runs spec, code, check in order"
     uv run python -m swarm
 
 fmt:

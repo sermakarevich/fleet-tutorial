@@ -1,26 +1,72 @@
-"""Entry point of the swarm runner: claim beads, run them, close them."""
+"""Entry point of the swarm runner: run one saved workflow through beads."""
 
 import os
 import subprocess
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path
 
-from swarm import queue, retry, runner, worker, worktree
+from swarm import queue, retry, runner, workflows, worktree
 
 FAKE_BD = """#!/bin/sh
 dir="$FAKE_BEADS_DIR"
+ready_one() {
+  f="$1"
+  id="${f##*/open_}"
+  deps=""
+  [ -f "$dir/deps_$id" ] && deps="$(cat "$dir/deps_$id")"
+  saved="$IFS"
+  IFS=','
+  for dep in $deps; do
+    dep="$(printf '%s' "$dep" | tr -d ' ')"
+    [ -z "$dep" ] && continue
+    [ -f "$dir/closed_$dep" ] || { IFS="$saved"; return 1; }
+  done
+  IFS="$saved"
+  return 0
+}
 case "$1" in
   ready)
     printf '['
     first=1
     for f in "$dir"/open_*; do
       [ -e "$f" ] || continue
+      ready_one "$f" || continue
       if [ $first -eq 0 ]; then printf ','; fi
       first=0
       printf '{"id":"%s","title":"%s"}' "${f##*/open_}" "$(cat "$f")"
     done
     printf ']\\n'
+    ;;
+  create)
+    title="$2"
+    deps=""
+    shift 2
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --deps) deps="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    n=1
+    while [ -e "$dir/open_bead-$n" ] || [ -e "$dir/prog_bead-$n" ] \\
+        || [ -e "$dir/closed_bead-$n" ] || [ -e "$dir/blocked_bead-$n" ]; do
+      n=$((n + 1))
+    done
+    printf '%s\\n' "$title" > "$dir/open_bead-$n"
+    printf '%s\\n' "$deps" > "$dir/deps_bead-$n"
+    printf 'bead-%s\\n' "$n"
+    ;;
+  show)
+    id="$2"
+    status="open"
+    [ -e "$dir/prog_$id" ] && status="in_progress"
+    [ -e "$dir/blocked_$id" ] && status="blocked"
+    [ -e "$dir/closed_$id" ] && status="closed"
+    title=""
+    for f in "$dir"/open_"$id" "$dir"/prog_"$id" "$dir"/blocked_"$id"; do
+      [ -f "$f" ] && title="$(cat "$f")"
+    done
+    printf '[{"id":"%s","title":"%s","status":"%s"}]\\n' "$id" "$title" "$status"
     ;;
   update)
     if [ "$3" = "--claim" ]; then
@@ -42,12 +88,7 @@ case "$1" in
 esac
 """
 
-SEED_FILE = "apples are red\nsoup is hot\ncarrots are orange\n"
-SEED_TASKS = {"bead-1": "first line", "bead-2": "second line"}
-LABELS = {
-    "bead-1": {"kind": "plan", "harness": "opencode"},
-    "bead-2": {"kind": "exec", "harness": "opencode"},
-}
+WORKFLOW = "write spec\nwrite code: write spec\ncheck work: write code\n"
 
 
 def install_fake_bd(tmp: Path) -> Path:
@@ -66,7 +107,7 @@ def install_fake_bd(tmp: Path) -> Path:
 def seed_repo(repo: Path) -> None:
     repo.mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
-    (repo / "shared.txt").write_text(SEED_FILE)
+    (repo / "progress.txt").write_text("")
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, capture_output=True)
     subprocess.run(
         [
@@ -85,39 +126,36 @@ def seed_repo(repo: Path) -> None:
     )
 
 
-def by_bead(task: queue.Task) -> Mapping[str, str]:
-    return LABELS[task.bead_id]
-
-
-def demo_task(task: str, workdir: Path, meta: Mapping[str, str] | None = None) -> str:
-    route = worker.resolve(meta)
-    print(f"spawn: {task} -> {route.harness}/{route.model}")
-    shared = workdir / "shared.txt"
-    if "first" in task:
-        shared.write_text(shared.read_text().replace("apples are red", "apples are green"))
-    else:
-        shared.write_text(shared.read_text().replace("carrots are orange", "carrots are purple"))
+def demo_task(task: str, workdir: Path, meta=None) -> str:
+    log = workdir / "progress.txt"
+    log.write_text(log.read_text() + task + "\n")
     worktree.commit(workdir, task)
     return f"result for {task}"
 
 
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        state_dir = install_fake_bd(Path(tmp))
-        for bead_id, title in SEED_TASKS.items():
-            (state_dir / f"open_{bead_id}").write_text(title + "\n")
+        install_fake_bd(Path(tmp))
+        flow = Path(tmp) / "flow.txt"
+        flow.write_text(WORKFLOW)
+        ids = workflows.start(flow)
+        print(f"opened: {len(ids)} steps (spec, code, check)")
         repo = Path(tmp) / "repo"
         seed_repo(repo)
         failures: dict[str, list[retry.Kind]] = {}
         for _ in range(10):
-            if not queue.list_ready():
+            ready = queue.list_ready()
+            if not ready:
                 break
-            result = runner.supervise(demo_task, repo=repo, failures=failures, meta_for=by_bead)
+            print(f"ready: {ready[0].title}")
+            result = runner.supervise(demo_task, repo=repo, failures=failures)
             if result is not None:
                 print(f"closed: {result}")
-        assert queue.claim_next() is None
-        assert "apples are green" in (repo / "shared.txt").read_text()
-        print("queue ready: none (two beads claimed, built, merged, closed)")
+        status = workflows.run_status({name: queue.state(bead) for name, bead in ids.items()})
+        done = (repo / "progress.txt").read_text().splitlines()
+        assert done == ["write spec", "write code", "check work"]
+        assert status == workflows.DONE
+        print(f"run status: {status} (3 of 3 steps closed in order)")
 
 
 if __name__ == "__main__":
