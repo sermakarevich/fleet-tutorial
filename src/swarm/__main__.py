@@ -1,11 +1,11 @@
-"""Entry point of the swarm runner: fire due schedules on cron."""
+"""Entry point of the swarm runner: one workflow, one schedule, one trigger."""
 
 import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from swarm import queue, schedule
+from swarm import queue, schedule, triggers, workflows
 
 FAKE_BD = """#!/bin/sh
 dir="$FAKE_BEADS_DIR"
@@ -34,6 +34,18 @@ case "$1" in
       if [ $first -eq 0 ]; then printf ','; fi
       first=0
       printf '{"id":"%s","title":"%s"}' "${f##*/open_}" "$(cat "$f")"
+    done
+    printf ']\\n'
+    ;;
+  blocked)
+    printf '['
+    first=1
+    for f in "$dir"/blocked_*; do
+      [ -e "$f" ] || continue
+      case "$f" in *.reason) continue ;; esac
+      if [ $first -eq 0 ]; then printf ','; fi
+      first=0
+      printf '{"id":"%s","title":"%s"}' "${f##*/blocked_}" "$(cat "$f")"
     done
     printf ']\\n'
     ;;
@@ -106,6 +118,10 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         install_fake_bd(Path(tmp))
         now = datetime.now()
+        flow = Path(tmp) / "flow.txt"
+        flow.write_text("write spec\nwrite code: write spec\n")
+        run = workflows.start(flow)
+        print(f"workflow: {len(run)} steps (write spec, write code)")
         other = (now.minute + 1) % 60
         sched = Path(tmp) / "sched.txt"
         sched.write_text(
@@ -120,9 +136,17 @@ def main() -> None:
         for entry in entries:
             if entry.name not in fired:
                 print(f"quiet: {entry.name} (not due)")
-        ready = [task.title for task in queue.list_ready()]
-        assert ready == ["write daily report"]
-        assert schedule.tick(entries, now, fired) == []
+        stuck = queue.claim_next()
+        assert stuck is not None
+        queue.block(stuck, "needs a human to look")
+        seen: set[str] = set()
+        opened = triggers.poll(seen)
+        assert len(opened) == 1
+        print(f"trigger: blocked {stuck.bead_id} -> {opened[0]}")
+        assert triggers.poll(seen) == []
+        ready = sorted(task.title for task in queue.list_ready())
+        assert "write daily report" in ready
+        assert any("Read-only" in title for title in ready)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1 @@
+Read bead {bead_id} ({title}) and report why it blocked. Read-only: change no files and open no beads.

@@ -36,6 +36,18 @@ case "$1" in
     done
     printf ']\\n'
     ;;
+  blocked)
+    printf '['
+    first=1
+    for f in "$dir"/blocked_*; do
+      [ -e "$f" ] || continue
+      case "$f" in *.reason) continue ;; esac
+      if [ $first -eq 0 ]; then printf ','; fi
+      first=0
+      printf '{"id":"%s","title":"%s"}' "${f##*/blocked_}" "$(cat "$f")"
+    done
+    printf ']\\n'
+    ;;
   create)
     title="$2"
     deps=""

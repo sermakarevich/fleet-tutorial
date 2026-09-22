@@ -18,10 +18,9 @@ def _run_bd(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run([BD_BIN, *args], capture_output=True, text=True, check=True)
 
 
-def list_ready() -> list[Task]:
-    """Ready beads: open tasks whose dependencies already closed."""
-    done = _run_bd(["ready", "--json"])
-    rows = json.loads(done.stdout or "[]")
+def _tasks_from(stdout: str) -> list[Task]:
+    """Bead rows parsed from one `bd --json` answer."""
+    rows = json.loads(stdout or "[]")
     if isinstance(rows, dict):
         rows = rows.get("data", [])
     return [
@@ -29,6 +28,18 @@ def list_ready() -> list[Task]:
         for row in rows
         if isinstance(row, dict) and row.get("id")
     ]
+
+
+def list_ready() -> list[Task]:
+    """Ready beads: open tasks whose dependencies already closed."""
+    done = _run_bd(["ready", "--json"])
+    return _tasks_from(done.stdout)
+
+
+def list_blocked() -> list[Task]:
+    """Blocked beads: parked for a human, each one event for a trigger."""
+    done = _run_bd(["blocked", "--json"])
+    return _tasks_from(done.stdout)
 
 
 def create(title: str, deps: tuple[str, ...] = ()) -> str:

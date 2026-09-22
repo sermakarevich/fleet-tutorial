@@ -8,9 +8,14 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: one due schedule fires, one stays quiet
+# Shows what this tutorial built: a blocked bead opens one investigator
 tutorial:
-    @echo "tut11: one due schedule fires, one stays quiet"
+    @echo "tut12: blocked task opens an investigator; demo swarm runs"
+    uv run python -m swarm
+
+# Tiny end-to-end swarm on fake beads: workflow, schedule, trigger
+demo:
+    @echo "capstone: one workflow, one schedule firing, one trigger firing"
     uv run python -m swarm
 
 fmt:

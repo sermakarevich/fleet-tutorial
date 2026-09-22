@@ -9,13 +9,14 @@ def test_package_imports() -> None:
     assert swarm.__doc__
 
 
-def test_entrypoint_fires_due_schedule_and_skips_quiet_one() -> None:
+def test_entrypoint_runs_workflow_schedule_and_trigger() -> None:
     out = subprocess.run(
         ["python", "-m", "swarm"],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "fired: morning report -> bead-1" in out.stdout
+    assert "workflow: 2 steps (write spec, write code)" in out.stdout
+    assert "fired: morning report -> bead-3" in out.stdout
     assert "quiet: later job (not due)" in out.stdout
-    assert out.stdout.index("fired: morning report") < out.stdout.index("quiet: later job")
+    assert "trigger: blocked bead-1 -> bead-4" in out.stdout
