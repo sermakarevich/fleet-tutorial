@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: plan on smart, execute on cheap, opencode first
+# Shows what this tutorial built: one supervisor tick claims, spawns, reaps, merges
 tutorial:
-    @echo "tut08: model routing and second harness"
+    @echo "tut09: supervisor claims, spawns, reaps"
     uv run python -m swarm
 
 fmt:

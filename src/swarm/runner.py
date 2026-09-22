@@ -1,8 +1,9 @@
-"""Parallel loop: keep N workers busy, reclaim leases from dead workers."""
+"""Parallel loop plus one supervisor tick: claim, spawn, reap, merge, close."""
 
+import subprocess
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,88 @@ class Lease:
     task: queue.Task
     heartbeat: float
     alive: bool = True
+
+
+def _spawn(
+    run_task: Callable[..., str],
+    title: str,
+    workdir: Path | None,
+    meta: Mapping[str, str] | None,
+) -> str:
+    try:
+        return run_task(title, workdir=workdir, meta=meta)
+    except TypeError:
+        try:
+            return run_task(title, workdir=workdir)
+        except TypeError:
+            return run_task(title)
+
+
+def _retry(task: queue.Task, kind: retry.Kind, failures: dict[str, list[retry.Kind]]) -> None:
+    history = failures.setdefault(task.bead_id, [])
+    history.append(kind)
+    if retry.should_retry(history):
+        queue.reopen(task)
+    else:
+        queue.block(task, retry.block_reason(kind, len(history)))
+
+
+def supervise(
+    run_task: Callable[..., str] = worker.run_task,
+    repo: Path | None = None,
+    base: str = "main",
+    failures: dict[str, list[retry.Kind]] | None = None,
+    meta_for: Callable[[queue.Task], Mapping[str, str] | None] | None = None,
+) -> str | None:
+    """Claim one bead, run it in a worktree, merge it, close or requeue it.
+
+    One tick does bounded work and exits: None when the queue is empty or
+    the bead needs another tick (retry, repair), the result when the bead
+    closed. Pass one `failures` dict across ticks so retries count up to
+    the block limit instead of restarting each tick.
+    """
+    owned: dict[str, list[retry.Kind]] = failures if failures is not None else {}
+    task = queue.claim_next()
+    if task is None:
+        return None
+    meta = meta_for(task) if meta_for else None
+    worker.resolve(meta)
+    if repo is None:
+        try:
+            result = _spawn(run_task, task.title, None, meta)
+        except Exception as exc:
+            _retry(task, retry.classify_error(exc), owned)
+            return None
+        kind = retry.kind_of_text(result)
+        if kind is not None:
+            _retry(task, kind, owned)
+            return None
+        queue.close(task)
+        return result
+    path, branch = worktree.create(repo, task.bead_id, base)
+    merged = False
+    try:
+        try:
+            result = _spawn(run_task, task.title, path, meta)
+        except Exception as exc:
+            _retry(task, retry.classify_error(exc), owned)
+            return None
+        kind = retry.kind_of_text(result)
+        if kind is not None:
+            _retry(task, kind, owned)
+            return None
+        try:
+            worktree.commit(path, task.title)
+        except subprocess.CalledProcessError:
+            pass
+        merged = worktree.merge_back(repo, branch, base)
+        if merged:
+            queue.close(task)
+            return result
+        queue.reopen(task)
+        return None
+    finally:
+        worktree.remove(repo, path, branch if merged else None)
 
 
 def run_parallel(
