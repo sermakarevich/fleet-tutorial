@@ -1,29 +1,32 @@
-"""For-loop: run tasks one by one until the list is empty."""
+"""For-loop: claim beads one by one until the queue is empty."""
 
 from collections.abc import Callable
 from pathlib import Path
 
-from swarm import checkpoint, todo, worker
+from swarm import checkpoint, queue, worker
 
 
 def run(
-    todo_file: Path,
     run_task: Callable[..., str] = worker.run_task,
     checkpoint_root: Path | None = None,
 ) -> list[str]:
-    """Run each item in turn, skipping tasks with a recorded result."""
+    """Claim each ready bead in turn, closing it on success."""
     results = []
-    while (task := todo.next_task(todo_file)) is not None:
-        task_folder = checkpoint.task_dir(checkpoint_root, task) if checkpoint_root else None
+    while (task := queue.claim_next()) is not None:
+        task_folder = checkpoint.task_dir(checkpoint_root, task.title) if checkpoint_root else None
         if task_folder is not None and checkpoint.has_result(task_folder):
-            todo.mark_done(todo_file, task)
+            queue.close(task)
             continue
-        if task_folder is None:
-            results.append(run_task(task))
-        else:
-            try:
-                results.append(run_task(task, checkpoint_dir=task_folder))
-            except TypeError:
-                results.append(run_task(task))
-        todo.mark_done(todo_file, task)
+        try:
+            if task_folder is None:
+                results.append(run_task(task.title))
+            else:
+                try:
+                    results.append(run_task(task.title, checkpoint_dir=task_folder))
+                except TypeError:
+                    results.append(run_task(task.title))
+        except Exception:
+            queue.reopen(task)
+            raise
+        queue.close(task)
     return results

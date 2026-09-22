@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: a worker asking a human mid-task
+# Shows what this tutorial built: tasks claimed from beads, never twice
 tutorial:
-    @echo "tut03: human in the loop"
+    @echo "tut04: beads queue"
     uv run python -m swarm
 
 fmt:

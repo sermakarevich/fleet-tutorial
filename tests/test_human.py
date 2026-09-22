@@ -3,9 +3,10 @@
 from functools import partial
 from pathlib import Path
 
+import fake_beads
 import pytest
 
-from swarm import checkpoint, human, loop, worker
+from swarm import checkpoint, human, loop, queue, worker
 
 
 def test_question_answer_roundtrip_through_files(tmp_path: Path) -> None:
@@ -92,10 +93,9 @@ def test_worker_timeout_leaves_question_for_resume(tmp_path: Path) -> None:
     assert checkpoint.read_result(task_folder) == "note drafted: one line"
 
 
-def test_tutorial_demo_flow_through_loop(tmp_path: Path) -> None:
+def test_tutorial_demo_flow_through_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "checkpoints"
-    todo_file = tmp_path / "TODO.md"
-    todo_file.write_text("draft the launch note\n")
+    fake_beads.install(tmp_path, monkeypatch, {"bead-1": "draft the launch note"})
 
     def asking(prompt: str) -> str:
         if "Human answer" in prompt:
@@ -107,5 +107,5 @@ def test_tutorial_demo_flow_through_loop(tmp_path: Path) -> None:
         return "one line"
 
     run = partial(worker.run_task, harness=asking, ask=canned)
-    assert loop.run(todo_file, run, checkpoint_root=root) == ["note drafted: one line"]
-    assert todo_file.read_text() == ""
+    assert loop.run(run, checkpoint_root=root) == ["note drafted: one line"]
+    assert queue.list_ready() == []

@@ -1,0 +1,54 @@
+"""Fake `bd` task tool for offline tests: state lives in plain files."""
+
+import os
+from pathlib import Path
+
+import pytest
+
+SCRIPT = """#!/bin/sh
+dir="$FAKE_BEADS_DIR"
+case "$1" in
+  ready)
+    printf '['
+    first=1
+    for f in "$dir"/open_*; do
+      [ -e "$f" ] || continue
+      if [ $first -eq 0 ]; then printf ','; fi
+      first=0
+      printf '{"id":"%s","title":"%s"}' "${f##*/open_}" "$(cat "$f")"
+    done
+    printf ']\\n'
+    ;;
+  update)
+    if [ "$3" = "--claim" ]; then
+      [ "$2" = "$FAKE_BEADS_FAIL_CLAIM" ] && exit 1
+      [ -e "$dir/open_$2" ] || exit 1
+      mv "$dir/open_$2" "$dir/prog_$2"
+    else
+      [ -e "$dir/prog_$2" ] || exit 1
+      mv "$dir/prog_$2" "$dir/open_$2"
+    fi
+    ;;
+  close)
+    rm -f "$dir/open_$2" "$dir/prog_$2"
+    touch "$dir/closed_$2"
+    ;;
+esac
+"""
+
+
+def install(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tasks: dict[str, str]) -> Path:
+    """Put a fake `bd` first on PATH, seeded with open bead ids to titles."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake_bd = bin_dir / "bd"
+    fake_bd.write_text(SCRIPT)
+    fake_bd.chmod(0o755)
+    state_dir = tmp_path / "beads"
+    state_dir.mkdir(exist_ok=True)
+    for bead_id, title in tasks.items():
+        (state_dir / f"open_{bead_id}").write_text(title + "\n")
+    monkeypatch.setenv("FAKE_BEADS_DIR", str(state_dir))
+    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+    monkeypatch.delenv("FAKE_BEADS_FAIL_CLAIM", raising=False)
+    return state_dir

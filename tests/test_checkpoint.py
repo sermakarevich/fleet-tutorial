@@ -3,6 +3,7 @@
 from functools import partial
 from pathlib import Path
 
+import fake_beads
 import pytest
 
 from swarm import checkpoint, loop, worker
@@ -64,9 +65,11 @@ def test_worker_resumes_from_checkpoint_after_crash(tmp_path: Path) -> None:
     assert checkpoint.read_result(task_folder) == "board wiped"
 
 
-def test_loop_skips_finished_tasks_on_rerun(tmp_path: Path) -> None:
+def test_loop_skips_finished_tasks_on_rerun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / "checkpoints"
-    todo_file = tmp_path / "TODO.md"
+    beads = fake_beads.install(tmp_path, monkeypatch, {"bead-1": "first", "bead-2": "second"})
     calls: list[str] = []
 
     def counting(prompt: str) -> str:
@@ -74,10 +77,11 @@ def test_loop_skips_finished_tasks_on_rerun(tmp_path: Path) -> None:
         return f"result for {prompt}"
 
     run = partial(worker.run_task, harness=counting)
-    todo_file.write_text("first\nsecond\n")
-    assert loop.run(todo_file, run, checkpoint_root=root) != []
+    assert loop.run(run, checkpoint_root=root) != []
     first_pass = len(calls)
     assert first_pass == 2
-    todo_file.write_text("first\nsecond\n")
-    assert loop.run(todo_file, run, checkpoint_root=root) == []
+    assert loop.run(run, checkpoint_root=root) == []
+    assert len(calls) == first_pass
+    (beads / "open_bead-1").write_text("first\n")
+    assert loop.run(run, checkpoint_root=root) == []
     assert len(calls) == first_pass
