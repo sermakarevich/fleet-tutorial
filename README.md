@@ -1,0 +1,75 @@
+# Swarm
+
+A hands-on tutorial that builds a *swarm runner* (a small program that runs a
+list of tasks through AI workers without you watching each step) from a TODO
+(to-do) loop to a parallel orchestrator (the program that decides which task
+runs where and when), one small step at a time in Python.
+
+## Quick start
+
+```bash
+cp .env.example .env   # then add your keys as later tutorials ask
+just setup
+just tutorial          # shows what the current tutorial built
+just test              # offline unit tests, no network needed
+```
+
+## How to follow the tutorials
+
+Each tutorial is a document in `docs/tutorials/` and a git tag (`tut00`,
+`tut01`, ...). Read the documents here on `main`; run the code at the tag.
+`main` is the latest code and is not kept runnable for older tutorials. The
+tag freezes the code exactly as that tutorial built it. A document is improved
+in place on `main`, so the copy inside an older tag may be behind the one you
+read here.
+
+The document has two layers. **In short** gives the concepts, the scope and
+the problem in plain language, no code. **In detail** explains how the code
+works and why it is built that way. Read only the first layer of every
+tutorial for the story; read the second to build it.
+
+For each tutorial:
+
+```bash
+git checkout tut01              # the code exactly as the tutorial describes it
+just setup                      # once per checkout, installs the locked setup
+just tutorial                   # shows what this tutorial built
+just test                       # the tests for this tutorial, no network needed
+git diff tut00..tut01 --stat    # every file this tutorial added or changed
+```
+
+Each tutorial adds one concept and fixes one limitation of the step before, so
+the diff between two neighbouring tags is one concept. `git tag --list 'tut*'`
+shows how far the series goes. `git checkout main` returns to the latest code.
+
+You need `uv`, `just` and, from tut08 on, a model key in `.env` (see
+`.env.example`). Tutorials that call the model say so; everything else runs
+offline.
+
+## Tutorials
+
+| Tutorial | Tag | Document |
+|---|---|---|
+| 0 — Setup | `tut00` | [tut00-setup.md](docs/tutorials/tut00-setup.md) |
+| 1 — TODO list plus for-loop | `tut01` | planned |
+| 2 — Checkpoint and resume | `tut02` | planned |
+| 3 — Human in the loop | `tut03` | planned |
+| 4 — Beads queue | `tut04` | planned |
+| 5 — Parallel workers plus leases | `tut05` | planned |
+| 6 — Worktree isolation plus merge | `tut06` | planned |
+| 7 — Retries plus dead-letter | `tut07` | planned |
+| 8 — Model routing plus multi-harness | `tut08` | planned |
+| 9 — The runner becomes an orchestrator | `tut09` | planned |
+| 10 — Workflows as saved graphs | `tut10` | planned |
+| 11 — Schedules on cron | `tut11` | planned |
+| 12 — Triggers on events plus capstone | `tut12` | planned |
+
+A row says `planned` until its tag is published. The concept behind each row
+and the order of the story are in `docs/dev/GOAL.md`.
+
+## For contributors
+
+Everything about how this repo is built lives in `docs/dev/`: the goal
+(`GOAL.md`), the finished shape (`VISION.md`), the tutorial method
+(`TUTORIAL_METHOD.md`) and the tutorial template. Coding rules are in
+`AGENTS.md`.
