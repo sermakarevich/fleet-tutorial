@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: retries with a dead-letter queue
+# Shows what this tutorial built: plan on smart, execute on cheap, opencode first
 tutorial:
-    @echo "tut07: retries and dead-letter"
+    @echo "tut08: model routing and second harness"
     uv run python -m swarm
 
 fmt:

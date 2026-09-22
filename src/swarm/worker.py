@@ -1,16 +1,20 @@
 """One worker: run a single task through a headless harness."""
 
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
-from swarm import checkpoint, human
+from swarm import checkpoint, human, routing
 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "do_task.txt"
 RESUME_PROMPT_FILE = Path(__file__).parent / "prompts" / "resume_task.txt"
 ANSWER_PROMPT_FILE = Path(__file__).parent / "prompts" / "answer_task.txt"
 HARNESS_BIN = "opencode"
 HARNESS_ARGS = ("run",)
+HARNESS_BINS = {
+    routing.Harness.OPENCODE.value: (HARNESS_BIN, HARNESS_ARGS),
+    routing.Harness.PI.value: ("pi", ()),
+}
 
 
 def build_prompt(task: str) -> str:
@@ -28,10 +32,21 @@ def build_answer_prompt(task: str, question: str, answer: str) -> str:
     return ANSWER_PROMPT_FILE.read_text().format(task=task, question=question, answer=answer)
 
 
-def run_harness(prompt: str, workdir: Path | None = None) -> str:
+def resolve(
+    meta: Mapping[str, str] | None = None, settings: routing.Settings | None = None
+) -> routing.Route:
+    """Harness plus model for one task from its metadata mapping."""
+    return routing.pick(meta, settings)
+
+
+def run_harness(
+    prompt: str, workdir: Path | None = None, route: routing.Route | None = None
+) -> str:
     """Call the harness command line interface and return its output."""
+    picked = route or routing.Route(harness=HARNESS_BIN, model="")
+    binary, args = HARNESS_BINS.get(picked.harness, (HARNESS_BIN, HARNESS_ARGS))
     done = subprocess.run(
-        [HARNESS_BIN, *HARNESS_ARGS, prompt],
+        [binary, *args, prompt],
         capture_output=True,
         text=True,
         check=True,
@@ -47,6 +62,7 @@ def run_task(
     ask: Callable[..., str] = human.ask,
     ask_timeout: float = human.ASK_TIMEOUT,
     workdir: Path | None = None,
+    meta: Mapping[str, str] | None = None,
 ) -> str:
     """Run one task, pausing for a human answer when the harness asks.
 
@@ -55,7 +71,7 @@ def run_task(
 
     def call(prompt: str) -> str:
         if harness is run_harness:
-            return run_harness(prompt, workdir)
+            return run_harness(prompt, workdir, resolve(meta))
         return harness(prompt)
 
     if checkpoint_dir is None:

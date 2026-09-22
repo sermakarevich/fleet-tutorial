@@ -9,14 +9,14 @@ def test_package_imports() -> None:
     assert swarm.__doc__
 
 
-def test_entrypoint_retries_flaky_and_blocks_hopeless() -> None:
+def test_entrypoint_shows_routing_picks() -> None:
     out = subprocess.run(
         ["python", "-m", "swarm"],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "result: result for flaky chore" in out.stdout
-    assert "blocked: hopeless chore" in out.stdout
-    assert "needs a human" in out.stdout
+    assert "plan: design the queue -> opencode/" in out.stdout
+    assert "exec: write the loop -> opencode/" in out.stdout
+    assert "exec: write the tests -> opencode/" in out.stdout
     assert "queue ready: none" in out.stdout
