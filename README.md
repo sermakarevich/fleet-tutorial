@@ -51,7 +51,7 @@ offline.
 | Tutorial | Tag | Document |
 |---|---|---|
 | 0 — Setup | `tut00` | [tut00-setup.md](docs/tutorials/tut00-setup.md) |
-| 1 — TODO list plus for-loop | `tut01` | planned |
+| 1 — TODO list and loop | `tut01` | [tut01-loop.md](docs/tutorials/tut01-loop.md) |
 | 2 — Checkpoint and resume | `tut02` | planned |
 | 3 — Human in the loop | `tut03` | planned |
 | 4 — Beads queue | `tut04` | planned |
