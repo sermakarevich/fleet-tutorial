@@ -8,8 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built
+# Shows what this tutorial built: a killed task resuming from its checkpoint
 tutorial:
+    @echo "tut02: checkpoint and resume"
     uv run python -m swarm
 
 fmt:

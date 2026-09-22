@@ -1,0 +1,4 @@
+Resume this task from the checkpoint without repeating done steps: {task}
+
+Checkpoint left by the last session:
+{checkpoint}
