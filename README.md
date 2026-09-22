@@ -58,7 +58,7 @@ offline.
 | 5 — Parallel workers plus leases | `tut05` | [tut05-workers.md](docs/tutorials/tut05-workers.md) |
 | 6 — Worktree isolation plus merge | `tut06` | [tut06-worktree.md](docs/tutorials/tut06-worktree.md) |
 | 7 — Retries plus dead-letter | `tut07` | [tut07-retry.md](docs/tutorials/tut07-retry.md) |
-| 8 — Model routing plus multi-harness | `tut08` | planned |
+| 8 — Model routing plus multi-harness | `tut08` | [tut08-routing.md](docs/tutorials/tut08-routing.md) |
 | 9 — The runner becomes an orchestrator | `tut09` | planned |
 | 10 — Workflows as saved graphs | `tut10` | planned |
 | 11 — Schedules on cron | `tut11` | planned |
