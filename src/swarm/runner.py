@@ -5,8 +5,9 @@ import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from pathlib import Path
 
-from swarm import queue, worker
+from swarm import queue, worker, worktree
 
 LEASE_TTL = 60.0
 BEAT_EVERY = 1.0
@@ -26,10 +27,18 @@ def run_parallel(
     clock: Callable[[], float] = time.monotonic,
     lease_ttl: float = LEASE_TTL,
     beat_every: float = BEAT_EVERY,
+    repo: Path | None = None,
+    base: str = "main",
 ) -> list[str]:
-    """Claim beads up to `count` at a time, reap each result, retry dead leases."""
+    """Claim beads up to `count` at a time, reap each result, retry dead leases.
+
+    With `repo` set, each bead builds in its own worktree and its branch
+    merges back; a bead whose merge clashes stays claimed till the run
+    ends, then reopens for repair instead of closing.
+    """
     leases: dict[str, Lease] = {}
     lock = threading.Lock()
+    git_lock = threading.Lock()
     results: list[str] = []
 
     def touch(bead_id: str, stop: threading.Event) -> None:
@@ -40,12 +49,27 @@ def run_parallel(
                     return
                 lease.heartbeat = clock()
 
-    def serve(task: queue.Task) -> str:
+    def serve(task: queue.Task) -> tuple[str, bool]:
         stop = threading.Event()
         beat = threading.Thread(target=touch, args=(task.bead_id, stop), daemon=True)
         beat.start()
         try:
-            return run_task(task.title)
+            if repo is None:
+                return run_task(task.title), True
+            with git_lock:
+                path, branch = worktree.create(repo, task.bead_id, base)
+            merged = False
+            try:
+                try:
+                    result = run_task(task.title, workdir=path)
+                except TypeError:
+                    result = run_task(task.title)
+                with git_lock:
+                    merged = worktree.merge_back(repo, branch, base)
+                return result, merged
+            finally:
+                with git_lock:
+                    worktree.remove(repo, path, branch if merged else None)
         finally:
             stop.set()
             beat.join()
@@ -77,32 +101,49 @@ def run_parallel(
                 leases.pop(bead_id, None)
 
     with ThreadPoolExecutor(max_workers=count, thread_name_prefix="swarm") as pool:
-        pending: dict[Future[str], queue.Task] = {}
-        while True:
-            sweep(clock())
-            while len(pending) < count:
-                with lock:
-                    task = queue.claim_next()
-                if task is None:
-                    break
-                with lock:
-                    leases[task.bead_id] = Lease(task=task, heartbeat=clock())
-                pending[pool.submit(serve, task)] = task
-            if not pending:
-                with lock:
-                    waiting = bool(leases)
-                if not waiting:
-                    return results
-                time.sleep(SETTLE_EVERY)
-                continue
-            done, _ = wait(list(pending), timeout=beat_every, return_when=FIRST_COMPLETED)
-            for future in done:
-                task = pending.pop(future)
+        pending: dict[Future[tuple[str, bool]], queue.Task] = {}
+        clashed: set[str] = set()
+        held: dict[str, queue.Task] = {}
+        try:
+            while True:
+                sweep(clock())
+                while len(pending) < count:
+                    with lock:
+                        task = queue.claim_next()
+                    if task is None:
+                        break
+                    if task.bead_id in clashed:
+                        held[task.bead_id] = task
+                        continue
+                    with lock:
+                        leases[task.bead_id] = Lease(task=task, heartbeat=clock())
+                    pending[pool.submit(serve, task)] = task
+                if not pending:
+                    with lock:
+                        waiting = bool(leases)
+                    if not waiting:
+                        break
+                    time.sleep(SETTLE_EVERY)
+                    continue
+                done, _ = wait(list(pending), timeout=beat_every, return_when=FIRST_COMPLETED)
+                for future in done:
+                    task = pending.pop(future)
+                    try:
+                        result, merged = future.result()
+                    except Exception:
+                        mark_done(task.bead_id, crashed=True)
+                    else:
+                        mark_done(task.bead_id, crashed=False)
+                        if merged:
+                            results.append(result)
+                            queue.close(task)
+                        else:
+                            clashed.add(task.bead_id)
+                            held[task.bead_id] = task
+        finally:
+            for task in held.values():
                 try:
-                    results.append(future.result())
+                    queue.reopen(task)
                 except Exception:
-                    mark_done(task.bead_id, crashed=True)
-                else:
-                    mark_done(task.bead_id, crashed=False)
-                    queue.close(task)
+                    pass
     return results

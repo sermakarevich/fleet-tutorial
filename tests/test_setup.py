@@ -9,16 +9,15 @@ def test_package_imports() -> None:
     assert swarm.__doc__
 
 
-def test_entrypoint_runs_three_beads_and_reclaims_one_lease() -> None:
+def test_entrypoint_merges_two_isolated_worktrees() -> None:
     out = subprocess.run(
         ["python", "-m", "swarm"],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "result: result for first chore" in out.stdout
-    assert "result: result for second chore" in out.stdout
-    assert "result: result for third chore" in out.stdout
-    assert "dead lease reclaimed: second chore ran again and closed" in out.stdout
-    assert "done: claimed 3, ran 4, double-runs 0" in out.stdout
-    assert "queue empty: all beads closed" in out.stdout
+    assert "result: result for first line" in out.stdout
+    assert "result: result for second line" in out.stdout
+    assert "apples are green" in out.stdout
+    assert "carrots are purple" in out.stdout
+    assert "queue empty: all beads merged and closed" in out.stdout

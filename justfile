@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: parallel workers, dead leases reclaimed
+# Shows what this tutorial built: isolated worktrees merged back
 tutorial:
-    @echo "tut05: parallel workers and leases"
+    @echo "tut06: worktree isolation and merge"
     uv run python -m swarm
 
 fmt:
