@@ -1,11 +1,10 @@
 """Entry point of the swarm runner: claim beads, run them, close them."""
 
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 
-from swarm import queue, runner, worktree
+from swarm import queue, runner
 
 FAKE_BD = """#!/bin/sh
 dir="$FAKE_BEADS_DIR"
@@ -25,6 +24,10 @@ case "$1" in
     if [ "$3" = "--claim" ]; then
       [ -e "$dir/open_$2" ] || exit 1
       mv "$dir/open_$2" "$dir/prog_$2"
+    elif [ "$4" = "blocked" ]; then
+      [ -e "$dir/prog_$2" ] || exit 1
+      mv "$dir/prog_$2" "$dir/blocked_$2"
+      printf '%s\n' "$6" > "$dir/blocked_$2.reason"
     else
       [ -e "$dir/prog_$2" ] || exit 1
       mv "$dir/prog_$2" "$dir/open_$2"
@@ -37,7 +40,7 @@ case "$1" in
 esac
 """
 
-SEED_FILE = "apples are red\nsoup is hot\ncarrots are orange\n"
+SEED_TASKS = {"open_flaky": "flaky chore\n", "open_hopeless": "hopeless chore\n"}
 
 
 def install_fake_bd(tmp: Path) -> Path:
@@ -54,67 +57,28 @@ def install_fake_bd(tmp: Path) -> Path:
     return state_dir
 
 
-def seed_demo_beads(state_dir: Path) -> None:
-    """Two open beads that edit different lines of the same file."""
-    (state_dir / "open_bead-1").write_text("first line\n")
-    (state_dir / "open_bead-2").write_text("second line\n")
-
-
-def git(repo: Path, *args: str) -> str:
-    """Run one git command in the demo repo."""
-    done = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=True)
-    return done.stdout.strip()
-
-
-def seed_demo_repo(tmp: Path) -> Path:
-    """A git repo whose shared file both demo tasks will edit."""
-    repo = tmp / "demo"
-    repo.mkdir()
-    git(repo, "init", "-b", "main")
-    (repo / "shared.txt").write_text(SEED_FILE)
-    git(repo, "add", "-A")
-    git(
-        repo,
-        "-c",
-        "user.name=swarm",
-        "-c",
-        "user.email=swarm@example.com",
-        "commit",
-        "-m",
-        "seed",
-    )
-    return repo
-
-
-def edit_line(path: Path, old: str, new: str) -> None:
-    """Swap one line of the shared file inside a task worktree."""
-    shared = path / "shared.txt"
-    shared.write_text(shared.read_text().replace(old, new))
-
-
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         state_dir = install_fake_bd(Path(tmp))
-        seed_demo_beads(state_dir)
-        repo = seed_demo_repo(Path(tmp))
+        for name, title in SEED_TASKS.items():
+            (state_dir / name).write_text(title)
+        tries: dict[str, int] = {}
 
-        def isolated(task: str, workdir: Path) -> str:
-            if "first" in task:
-                edit_line(workdir, "apples are red", "apples are green")
-            else:
-                edit_line(workdir, "carrots are orange", "carrots are purple")
-            worktree.commit(workdir, task)
+        def demo(task: str) -> str:
+            tries[task] = tries.get(task, 0) + 1
+            if "hopeless" in task:
+                raise RuntimeError("always fails")
+            if tries[task] <= 2:
+                raise RuntimeError(f"flaky fails, try {tries[task]}")
             return f"result for {task}"
 
-        results = runner.run_parallel(count=2, run_task=isolated, repo=repo, base="main")
-        for result in sorted(results):
+        results = runner.run_parallel(count=1, run_task=demo, lease_ttl=0.2, beat_every=0.01)
+        for result in results:
             print(f"result: {result}")
-        print("merged shared.txt:")
-        print((repo / "shared.txt").read_text().strip())
-        print("branches:")
-        print(git(repo, "branch", "--list"))
+        reason = (state_dir / "blocked_hopeless.reason").read_text().strip()
+        print(f"blocked: hopeless chore — {reason}")
         assert queue.claim_next() is None
-        print("queue empty: all beads merged and closed")
+        print("queue ready: none (one closed, one parked for a human)")
 
 
 if __name__ == "__main__":

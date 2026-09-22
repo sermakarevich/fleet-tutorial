@@ -24,6 +24,10 @@ case "$1" in
       [ "$2" = "$FAKE_BEADS_FAIL_CLAIM" ] && exit 1
       [ -e "$dir/open_$2" ] || exit 1
       mv "$dir/open_$2" "$dir/prog_$2"
+    elif [ "$4" = "blocked" ]; then
+      [ -e "$dir/prog_$2" ] || exit 1
+      mv "$dir/prog_$2" "$dir/blocked_$2"
+      printf '%s\n' "$6" > "$dir/blocked_$2.reason"
     else
       [ -e "$dir/prog_$2" ] || exit 1
       mv "$dir/prog_$2" "$dir/open_$2"

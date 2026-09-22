@@ -7,7 +7,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
-from swarm import queue, worker, worktree
+from swarm import queue, retry, worker, worktree
 
 LEASE_TTL = 60.0
 BEAT_EVERY = 1.0
@@ -32,11 +32,14 @@ def run_parallel(
 ) -> list[str]:
     """Claim beads up to `count` at a time, reap each result, retry dead leases.
 
+    Failures retry with a small backoff up to the retry limit; a bead that
+    fails past the limit blocks with a reason instead of retrying forever.
     With `repo` set, each bead builds in its own worktree and its branch
     merges back; a bead whose merge clashes stays claimed till the run
     ends, then reopens for repair instead of closing.
     """
     leases: dict[str, Lease] = {}
+    failures: dict[str, list[retry.Kind]] = {}
     lock = threading.Lock()
     git_lock = threading.Lock()
     results: list[str] = []
@@ -74,6 +77,16 @@ def run_parallel(
             stop.set()
             beat.join()
 
+    def note_failure(task: queue.Task, kind: retry.Kind) -> None:
+        history = failures.setdefault(task.bead_id, [])
+        history.append(kind)
+        if retry.should_retry(history):
+            time.sleep(retry.backoff_for(retry.consecutive(history, kind)))
+            mark_done(task.bead_id, crashed=True)
+        else:
+            mark_done(task.bead_id, crashed=False)
+            queue.block(task, retry.block_reason(kind, len(history)))
+
     def sweep(now: float) -> None:
         with lock:
             dead = [
@@ -86,8 +99,12 @@ def run_parallel(
                 lease = leases.pop(bead_id, None)
             if lease is None:
                 continue
+            history = failures.get(bead_id, [])
             try:
-                queue.reopen(lease.task)
+                if history and not retry.should_retry(history):
+                    queue.block(lease.task, retry.block_reason(history[-1], len(history)))
+                else:
+                    queue.reopen(lease.task)
             except Exception:
                 with lock:
                     leases[bead_id] = lease
@@ -130,16 +147,20 @@ def run_parallel(
                     task = pending.pop(future)
                     try:
                         result, merged = future.result()
-                    except Exception:
-                        mark_done(task.bead_id, crashed=True)
+                    except Exception as exc:
+                        note_failure(task, retry.classify_error(exc))
                     else:
-                        mark_done(task.bead_id, crashed=False)
-                        if merged:
-                            results.append(result)
-                            queue.close(task)
+                        kind = retry.kind_of_text(result)
+                        if kind is not None:
+                            note_failure(task, kind)
                         else:
-                            clashed.add(task.bead_id)
-                            held[task.bead_id] = task
+                            mark_done(task.bead_id, crashed=False)
+                            if merged:
+                                results.append(result)
+                                queue.close(task)
+                            else:
+                                clashed.add(task.bead_id)
+                                held[task.bead_id] = task
         finally:
             for task in held.values():
                 try:

@@ -8,9 +8,9 @@ default:
 setup:
     uv sync
 
-# Shows what this tutorial built: isolated worktrees merged back
+# Shows what this tutorial built: retries with a dead-letter queue
 tutorial:
-    @echo "tut06: worktree isolation and merge"
+    @echo "tut07: retries and dead-letter"
     uv run python -m swarm
 
 fmt:

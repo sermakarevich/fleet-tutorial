@@ -54,3 +54,11 @@ def close(task: Task) -> None:
 def reopen(task: Task) -> None:
     """Send a failed bead back to the queue for the next run."""
     _run_bd(["update", task.bead_id, "--status", "open"])
+
+
+def block(task: Task, reason: str = "") -> None:
+    """Park an exhausted bead as blocked with the reason, for a human."""
+    args = ["update", task.bead_id, "--status", "blocked"]
+    if reason:
+        args += ["--notes", reason]
+    _run_bd(args)
