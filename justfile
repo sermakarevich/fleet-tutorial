@@ -10,9 +10,7 @@ setup:
 
 # Shows what this tutorial built
 tutorial:
-    uv run pytest -q
     uv run python -m swarm
-    @echo "setup OK"
 
 fmt:
     uv run ruff format .

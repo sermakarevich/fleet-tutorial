@@ -1,0 +1,1 @@
+Pull the next task from the to-do list and do it: {task}
