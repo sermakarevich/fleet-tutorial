@@ -1,0 +1,7 @@
+Continue this task with the human answer: {task}
+
+Question you asked:
+{question}
+
+Human answer:
+{answer}

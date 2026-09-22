@@ -9,15 +9,14 @@ def test_package_imports() -> None:
     assert swarm.__doc__
 
 
-def test_entrypoint_runs_kill_and_resume_demo() -> None:
+def test_entrypoint_runs_ask_answer_continue_demo() -> None:
     out = subprocess.run(
         ["python", "-m", "swarm"],
         capture_output=True,
         text=True,
         check=True,
     )
-    assert "crashed: simulated crash" in out.stdout
-    assert "checkpoint: starting: draft the status update" in out.stdout
-    assert "resuming from checkpoint..." in out.stdout
-    assert "task: draft the status update" in out.stdout
-    assert "done: 1 resumed, 1 reused from checkpoint" in out.stdout
+    assert "question: one line or two?" in out.stdout
+    assert "answer: one line" in out.stdout
+    assert "result: demo result for draft the launch note: one line" in out.stdout
+    assert "done: asked 1, answered 1, continued 1" in out.stdout
